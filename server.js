@@ -1,0 +1,251 @@
+const express = require('express');
+const path = require('path');
+const fsSync = require('node:fs');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Middleware
+app.use(express.json());
+app.use(express.static('public'));
+
+// Helper function to clean directory path (remove quotes)
+function cleanPath(dirPath) {
+  if (!dirPath) return '';
+  
+  // Remove surrounding quotes (both single and double)
+  let cleaned = dirPath.trim();
+  if ((cleaned.startsWith('"') && cleaned.endsWith('"')) || 
+      (cleaned.startsWith("'") && cleaned.endsWith("'"))) {
+    cleaned = cleaned.slice(1, -1);
+  }
+  
+  return cleaned;
+}
+
+// API endpoint to get images from a directory
+app.post('/api/scandir', async (req, res) => {
+  try {
+    let { directoryPath } = req.body;
+    
+    if (!directoryPath) {
+      return res.status(400).json({ error: 'Directory path is required' });
+    }
+    
+    // Clean the path (remove quotes)
+    directoryPath = cleanPath(directoryPath);
+    
+    if (!directoryPath) {
+      return res.status(400).json({ error: 'Directory path is required' });
+    }
+
+    // Security check - prevent directory traversal
+    const resolvedPath = path.resolve(directoryPath);
+    const appRoot = path.resolve(__dirname);
+    
+    // Only allow directories within the app root or user's home directory
+    const allowedPaths = [appRoot, process.env.HOME];
+    
+    if (!allowedPaths.some(allowed => resolvedPath.startsWith(allowed))) {
+      return res.status(403).json({ error: 'Access denied to this directory' });
+    }
+
+    // Check if directory exists
+    try {
+      fsSync.accessSync(resolvedPath);
+    } catch (err) {
+      return res.status(404).json({ error: 'Directory not found' });
+    }
+
+    // Get all files in directory
+    const files = fsSync.readdirSync(resolvedPath);
+    
+    // Filter for image files
+    const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
+    const imageFiles = files.filter(file => {
+      const ext = path.extname(file).toLowerCase();
+      return imageExtensions.includes(ext);
+    });
+
+    // For each image, check if corresponding txt file exists
+    const imagesWithAnnotations = await Promise.all(
+      imageFiles.map(async (imageFile) => {
+        const baseName = path.basename(imageFile, path.extname(imageFile));
+        const txtFile = `${baseName}.txt`;
+        const txtPath = path.join(resolvedPath, txtFile);
+        
+        let annotation = '';
+        try {
+          fsSync.accessSync(txtPath);
+          annotation = fsSync.readFileSync(txtPath, 'utf8');
+        } catch (err) {
+          // File doesn't exist or can't be read
+        }
+        
+        return {
+          image: {
+            name: imageFile,
+            fullPath: path.join(resolvedPath, imageFile)
+          },
+          fullPath: path.join(resolvedPath, imageFile),
+          annotation: annotation
+        };
+      })
+    );
+
+    res.json({ 
+      directory: resolvedPath,
+      images: imagesWithAnnotations 
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to scan directory' });
+  }
+});
+
+// API endpoint to save annotation
+app.post('/api/annotations', async (req, res) => {
+  try {
+    let directoryPath = req.body.directoryPath;
+    let imageFile = req.body.imageFile;
+    const annotation = req.body.annotation;
+    
+    if (!directoryPath || !imageFile) {
+      return res.status(400).json({ error: 'Directory path and image file name are required' });
+    }
+    
+    // Clean the directory path
+    let cleanedPath = cleanPath(directoryPath);
+    if (cleanedPath) {
+      directoryPath = cleanedPath;
+    }
+    
+    // Security check
+    const resolvedPath = path.resolve(directoryPath);
+    const appRoot = path.resolve(__dirname);
+    
+    if (!resolvedPath.startsWith(appRoot) && !resolvedPath.startsWith(process.env.HOME)) {
+      return res.status(403).json({ error: 'Access denied to this directory' });
+    }
+
+    const txtFileName = `${path.basename(imageFile, path.extname(imageFile))}.txt`;
+    const txtFilePath = path.join(resolvedPath, txtFileName);
+
+    // Write annotation to txt file
+    fsSync.writeFileSync(txtFilePath, annotation, 'utf8');
+    
+    res.json({ success: true, message: 'Annotation saved successfully' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to save annotation' });
+  }
+});
+
+// Serve images from any directory
+app.get('/image/*', (req, res) => {
+  // Extract the path from the URL
+  const encodedPath = req.params[0];
+  
+  try {
+    // Decode the path (URL-encoded)
+    const decodedPath = decodeURIComponent(encodedPath);
+    
+    // Security check - prevent directory traversal
+    const resolvedPath = path.resolve(decodedPath);
+    const appRoot = path.resolve(__dirname);
+    
+    // Only allow directories within the app root or user's home directory
+    const allowedPaths = [appRoot, process.env.HOME];
+    
+    if (!allowedPaths.some(allowed => resolvedPath.startsWith(allowed))) {
+      return res.status(403).send('Access denied');
+    }
+    
+    // Check if file exists
+    try {
+      fsSync.accessSync(resolvedPath);
+    } catch (err) {
+      return res.status(404).send('Image not found');
+    }
+    const ext = path.extname(resolvedPath).toLowerCase();
+    const contentType = {
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.png': 'image/png',
+      '.gif': 'image/gif',
+      '.webp': 'image/webp',
+      '.bmp': 'image/bmp'
+    }[ext] || 'application/octet-stream';
+    
+    res.setHeader('Content-Type', contentType);
+    
+    // Stream the file
+    const readStream = fsSync.createReadStream(resolvedPath);
+    readStream.pipe(res);
+    
+    readStream.on('error', (err) => {
+      res.status(500).send('Error reading image');
+    });
+  } catch (error) {
+    res.status(500).send('Error serving image');
+  }
+});
+
+// API endpoint to get existing images from uploads directory (legacy)
+app.get('/api/images', async (req, res) => {
+  try {
+    const uploadsDir = path.join(__dirname, 'uploads');
+    
+    // Check if uploads directory exists
+    try {
+      fsSync.accessSync(uploadsDir);
+    } catch (err) {
+      return res.json({ images: [] });
+    }
+
+    const files = fsSync.readdirSync(uploadsDir);
+    
+    // Filter for image files
+    const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
+    const imageFiles = files.filter(file => {
+      const ext = path.extname(file).toLowerCase();
+      return imageExtensions.includes(ext);
+    });
+
+    // For each image, check if corresponding txt file exists
+    const imagesWithAnnotations = await Promise.all(
+      imageFiles.map(async (imageFile) => {
+        const baseName = path.basename(imageFile, path.extname(imageFile));
+        const txtFile = `${baseName}.txt`;
+        const txtPath = path.join(uploadsDir, txtFile);
+        
+        let annotation = '';
+        try {
+          fsSync.accessSync(txtPath);
+          annotation = fsSync.readFileSync(txtPath, 'utf8');
+        } catch (err) {
+          // File doesn't exist or can't be read
+        }
+        
+        return {
+          image: {
+            name: imageFile,
+            fullPath: path.join(uploadsDir, imageFile)
+          },
+          fullPath: path.join(uploadsDir, imageFile),
+          annotation: annotation
+        };
+      })
+    );
+
+    res.json({ images: imagesWithAnnotations });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch images' });
+  }
+});
+
+// Serve uploads directory as static
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Start server
+app.listen(PORT, () => {
+  console.log('Image Annotator running at http://localhost:' + PORT);
+});
