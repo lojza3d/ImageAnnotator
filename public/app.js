@@ -232,15 +232,9 @@ function handleChipClick(e) {
   const chip = e.currentTarget;
   const keyword = chip.dataset.keyword;
 
-  // If no tile selected, select the first available one
+  // If no tile/textarea selected, do nothing
   if (!AppState.selectedTextarea) {
-    const textareas = document.querySelectorAll('.annotation-text');
-    if (textareas.length > 0) {
-      const firstTile = textareas[0].closest('.image-tile');
-      selectTile(firstTile);
-    } else {
-      return;
-    }
+    return;
   }
 
   // Get current annotation from selected textarea
@@ -276,6 +270,9 @@ function handleChipClick(e) {
 
   // Also trigger save
   saveAnnotation(AppState.selectedTextarea);
+
+  //Also highlight chips
+  highlightChipsForSelectedTextarea()
 }
 
 // Handle textarea input (update highlights)
@@ -355,10 +352,15 @@ function renderImageTiles(images) {
             </div>
             <div class="media-content">
               <div class="content">
-                <div>
-                  <span><strong>${fileName}</strong></span>
-                  <span>horizontal spacer here</span>
-                  <span class="save-status"></span>
+                <div class="level">
+                  <div class="level-left">
+                    <span><strong>${fileName}</strong></span>
+                  </div>
+                  <div class="level-right">
+                    <div class="level-item">
+                      <span class="save-status"></span>
+                    </div>
+                  </div>
                 </div>
                 <textarea 
                   class="textarea annotation-text" 
