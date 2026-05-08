@@ -1,40 +1,42 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Image Annotator</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css">
   <style>
     .image-tile {
-      margin-bottom: 20px;
+      margin: 8px 8px 0 8px;
+      transition: border-color 0.2s;
     }
-    
+
     .tile-content {
       display: flex;
       gap: 15px;
     }
-    
+
     .thumbnail-container {
       flex-shrink: 0;
     }
-    
+
     .thumbnail {
       width: 150px;
       height: 150px;
       object-fit: cover;
       border-radius: 6px;
     }
-    
+
     .annotation-container {
       flex-grow: 1;
     }
-    
+
     .save-status {
       font-size: 0.8rem;
       color: #48c774;
     }
-    
+
     .loading-overlay {
       position: fixed;
       top: 0;
@@ -47,71 +49,140 @@
       justify-content: center;
       z-index: 1000;
     }
-    
+
     .loading-spinner {
       background-color: white;
       padding: 30px;
       border-radius: 8px;
       text-align: center;
     }
-    
+
     .empty-state {
       padding: 40px;
       text-align: center;
       color: #7a7a7a;
     }
-    
+
     .tile-container {
       overflow-y: auto;
       max-height: calc(100vh - 250px);
     }
-    
+
     .tile-container::-webkit-scrollbar {
       width: 8px;
     }
-    
+
     .tile-container::-webkit-scrollbar-track {
       background: #f1f1f1;
       border-radius: 4px;
     }
-    
+
     .tile-container::-webkit-scrollbar-thumb {
       background: #c0c0c0;
       border-radius: 4px;
     }
-    
+
     .tile-container::-webkit-scrollbar-thumb:hover {
       background: #a8a8a8;
     }
-    
+
     .directory-selector {
       margin-bottom: 20px;
     }
+
+    .mode-controls {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+
+    .keyword-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .keyword-chip {
+      background-color: #f5f5f5;
+      border-radius: 20px;
+      padding: 4px 12px;
+      font-size: 0.9rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      cursor: pointer;
+    }
+
+    .keyword-chip.highlighted {
+      background-color: #70db70;
+      color: white;
+    }
+
+    .keyword-chip-count {
+      background-color: #dbdbdb;
+      border-radius: 50%;
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.8rem;
+    }
+
+    .keyword-chip.highlighted .keyword-chip-count {
+      background-color: white;
+      color: #70db70;
+    }
+
+    .chip-controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .chip-controls button {
+      flex-shrink: 0;
+    }
   </style>
 </head>
+
 <body>
   <section class="section">
     <div class="container">
       <h1 class="title">Image Annotator</h1>
-      
-      <!-- Directory selector -->
-      <div class="directory-selector">
-        <label class="label">Select Image Directory</label>
-        <div class="field has-addons">
-          <div class="control is-expanded">
-            <input type="text" id="directory-path" class="input" placeholder="/path/to/your/images">
+
+      <!-- Mode switcher controls -->
+      <div id="mode-controls" class="mode-controls">
+        <!-- Initial mode: Directory selector -->
+        <div id="initial-mode">
+          <label class="label">Select Image Directory</label>
+          <div class="field has-addons">
+            <div class="control is-expanded">
+              <input type="text" id="directory-path" class="input" placeholder="/path/to/your/images">
+            </div>
+            <div class="control">
+              <button class="button is-primary" id="scan-btn">
+                <span class="icon"><i class="fas fa-search"></i></span>
+                <span>Scan Directory</span>
+              </button>
+            </div>
           </div>
-          <div class="control">
-            <button class="button is-primary" id="scan-btn">
-              <span class="icon"><i class="fas fa-search"></i></span>
-              <span>Scan Directory</span>
-            </button>
-          </div>
-          <div class="control">
-            <button class="button is-danger" id="clear-btn" disabled>
-              <span class="icon"><i class="fas fa-trash"></i></span>
-              <span>Clear Images</span>
-            </button>
+        </div>
+
+        <!-- Annotation mode: Clear button + Keyword chips -->
+        <div id="annotation-mode" style="display: none;">
+          <button class="button is-danger" id="clear-btn">
+            <span class="icon"><i class="fas fa-trash"></i></span>
+            <span>Clear Images</span>
+          </button>
+
+          <!-- Keyword chips container -->
+          <div id="keyword-chips-container">
+            <label class="label">Keywords</label>
+            <div id="keyword-chips" class="keyword-chips">
+              <!-- Keywords will be rendered here -->
+            </div>
           </div>
         </div>
       </div>
@@ -140,103 +211,319 @@
     const clearBtn = document.getElementById('clear-btn');
     const imageContainer = document.getElementById('image-container');
     const loadingOverlay = document.getElementById('loading-overlay');
+    const initialModeDiv = document.getElementById('initial-mode');
+    const annotationModeDiv = document.getElementById('annotation-mode');
+    const keywordChipsContainer = document.getElementById('keyword-chips-container');
 
     // Current images data
     let currentImages = [];
     let currentDirectory = '';
 
+    // Keyword chips data
+    const keywordCounts = {}; // { keyword: count }
+
+    // Track selected tile and its textarea
+    let selectedTile = null;
+    let selectedTextarea = null;
+
     // Load existing images on page load
     document.addEventListener('DOMContentLoaded', async () => {
       await loadImages();
-      
+
       // Event listeners
       scanBtn.addEventListener('click', handleScanDirectory);
-      
-      clearBtn.addEventListener('click', () => {
-        currentDirectory = '';
-        directoryPathInput.value = '';
-        clearBtn.disabled = true;
-        
-        imageContainer.innerHTML = `
-          <div class="empty-state">
-            <p>No images yet. Enter a directory path and click "Scan Directory".</p>
-          </div>`;
-      });
+      clearBtn.addEventListener('click', clearImages);
     });
 
-    // Handle directory scan
-    async function handleScanDirectory() {
-      let dirPath = directoryPathInput.value.trim();
-      
-      if (!dirPath) {
-        alert('Please enter a directory path');
-        return;
+    // Switch to initial mode
+    function switchToInitialMode() {
+      initialModeDiv.style.display = 'block';
+      annotationModeDiv.style.display = 'none';
+    }
+
+    // Switch to annotation mode
+    function switchToAnnotationMode() {
+      initialModeDiv.style.display = 'none';
+      annotationModeDiv.style.display = 'block';
+    }
+
+    // Select tile (keep at least one selected if possible)
+    function selectTile(tile) {
+      //const wasSelected = !!selectedTile;
+
+      // Deselect previous tile only if we're selecting a different one
+      if (selectedTile && selectedTile !== tile) {
+        selectedTile.classList.remove('is-primary');
+        selectedTile.classList.remove('is-light');
       }
-      
-      // Clean the path (remove quotes)
-      dirPath = cleanPath(dirPath);
-      
-      if (!dirPath) {
-        alert('Please enter a valid directory path');
-        return;
-      }
-      
-      showLoading(true);
-      
-      try {
-        const response = await fetch('/api/scandir', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ directoryPath: dirPath })
+
+      // Select new tile
+      selectedTile = tile;
+      selectedTextarea = tile.querySelector('.annotation-text');
+
+      // Highlight tile
+      tile.classList.add('is-primary');
+      tile.classList.add('is-light');
+    }
+
+    // Clear images
+    function clearImages() {
+      selectedTile = null;
+      selectedTextarea = null;
+
+      currentDirectory = '';
+      //directoryPathInput.value = '';
+      currentImages = [];
+
+      switchToInitialMode();
+      imageContainer.innerHTML = '';
+      clearBtn.disabled = true;
+    }
+
+    // Extract keywords from annotation text
+    function extractKeywords(annotation) {
+      if (!annotation || !annotation.trim()) return [];
+
+      const keywords = annotation.split(',').map(k => k.trim()).filter(k => k);
+      return keywords;
+    }
+
+    // Update keyword counts based on all annotations
+    function updateKeywordCounts() {
+      const newKeywordCounts = {};
+
+      currentImages.forEach((item) => {
+        const annotation = item.annotation || '';
+        extractKeywords(annotation).forEach(keyword => {
+          newKeywordCounts[keyword] = (newKeywordCounts[keyword] || 0) + 1;
         });
-        
-        const data = await response.json();
-        
-        if (response.ok) {
-          currentDirectory = data.directory;
-          
-          // Enable clear button
-          clearBtn.disabled = false;
-          
-          currentImages = data.images;
-          renderImageTiles(currentImages);
-        } else {
-          alert('Error: ' + data.error);
-        }
-      } catch (error) {
-        console.error('Error scanning directory:', error);
-        alert('Failed to scan directory');
-      } finally {
-        showLoading(false);
+      });
+
+      for (const keyword in newKeywordCounts) {
+        keywordCounts[keyword] = newKeywordCounts[keyword];
+      }
+
+      return Object.keys(newKeywordCounts).sort();
+    }
+
+    // Render keyword chips
+    function renderKeywordChips() {
+      const container = document.getElementById('keyword-chips');
+      const sortedKeywords = updateKeywordCounts();
+
+      if (sortedKeywords.length === 0) {
+        container.innerHTML = '<p class="has-text-grey">No keywords found in annotations</p>';
+        return;
+      }
+
+      let html = '';
+      sortedKeywords.forEach(keyword => {
+        const count = keywordCounts[keyword];
+        html += `
+          <div class="keyword-chip" data-keyword="${escapeHtml(keyword)}">
+            ${escapeHtml(keyword)}
+            <span class="keyword-chip-count">${count}</span>
+          </div>`;
+      });
+
+      container.innerHTML = html;
+
+      // Add click handlers to chips
+      document.querySelectorAll('.keyword-chip').forEach(chip => {
+        chip.addEventListener('click', handleChipClick);
+      });
+    }
+
+    // Highlight chips based on selected textarea
+    function highlightChipsForSelectedTextarea() {
+      const chips = document.querySelectorAll('.keyword-chip');
+
+      if (selectedTextarea) {
+        const annotation = selectedTextarea.value;
+        const focusedKeywords = extractKeywords(annotation);
+
+        chips.forEach(chip => {
+          const keyword = chip.dataset.keyword;
+
+          if (focusedKeywords.includes(keyword)) {
+            chip.classList.add('highlighted');
+          } else {
+            chip.classList.remove('highlighted');
+          }
+        });
       }
     }
 
-    // Clean path function (remove quotes)
-    function cleanPath(dirPath) {
-      if (!dirPath) return '';
-      
-      // Remove surrounding quotes (both single and double)
-      let cleaned = dirPath.trim();
-      if ((cleaned.startsWith('"') && cleaned.endsWith('"')) || 
-          (cleaned.startsWith("'") && cleaned.endsWith("'"))) {
-        cleaned = cleaned.slice(1, -1);
+    // Save annotation for a specific textarea
+    async function saveAnnotation(textarea) {
+      const imageFileEncoded = textarea.dataset.image;
+      const fullPathEncoded = textarea.dataset.fullpath;
+      const annotation = textarea.value;
+
+      // Decode the filename
+      const imageFile = decodeURIComponent(imageFileEncoded);
+
+      // Get full path if available
+      let directoryPath = currentDirectory;
+      if (fullPathEncoded) {
+        const fullPath = decodeURIComponent(fullPathEncoded);
+
+        // Extract directory from full path using string manipulation
+        if (fullPath) {
+          const lastSlash = fullPath.lastIndexOf('/');
+          if (lastSlash > -1) {
+            directoryPath = fullPath.substring(0, lastSlash);
+          }
+        }
       }
-      
-      return cleaned;
+
+      // Show saving indicator
+      const saveStatus = textarea.previousElementSibling?.querySelector('.save-status');
+      if (saveStatus) {
+        saveStatus.textContent = 'Saving...';
+        saveStatus.style.color = '#3273dc';
+      }
+
+      try {
+        const response = await fetch('/api/annotations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            directoryPath: directoryPath,
+            imageFile: imageFile,
+            annotation: annotation
+          })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          // Update annotation in currentImages
+          const imageFileKey = decodeURIComponent(imageFileEncoded);
+          const imageIndex = currentImages.findIndex(img => img.image?.name === imageFileKey || img.fullPath.includes(imageFileKey));
+          if (imageIndex > -1) {
+            currentImages[imageIndex].annotation = annotation;
+          }
+
+          // Show success indicator
+          if (saveStatus) {
+            saveStatus.textContent = 'Saved';
+            setTimeout(() => {
+              saveStatus.textContent = '';
+            }, 2000);
+          }
+
+          // Refresh chips after successful save
+          renderKeywordChips();
+        } else {
+          if (saveStatus) {
+            saveStatus.textContent = 'Error saving';
+            saveStatus.style.color = '#ff3860';
+          }
+        }
+      } catch (error) {
+        console.error('Error saving annotation:', error);
+
+        if (saveStatus) {
+          saveStatus.textContent = 'Error saving';
+          saveStatus.style.color = '#ff3860';
+        }
+      }
+    }
+
+    // Handle chip click
+    function handleChipClick(e) {
+      const chip = e.currentTarget;
+      const keyword = chip.dataset.keyword;
+
+      // If no tile selected, select the first available one
+      if (!selectedTextarea) {
+        const textareas = document.querySelectorAll('.annotation-text');
+        if (textareas.length > 0) {
+          const firstTile = textareas[0].closest('.image-tile');
+          selectTile(firstTile);
+        } else {
+          return;
+        }
+      }
+
+      // Get current annotation from selected textarea
+      let annotation = selectedTextarea.value;
+
+      if (chip.classList.contains('highlighted')) {
+        // Remove keyword
+        const keywords = extractKeywords(annotation);
+        const index = keywords.indexOf(keyword);
+
+        if (index > -1) {
+          keywords.splice(index, 1);
+        }
+
+        selectedTextarea.value = keywords.join(', ');
+      } else {
+        // Add keyword
+        if (annotation.trim()) {
+          if (!annotation.endsWith(', ')) {
+            annotation += ', ';
+          }
+        } else {
+          annotation = '';
+        }
+
+        annotation += keyword;
+        selectedTextarea.value = annotation;
+      }
+
+      // Trigger input to update highlights
+      const event = new Event('input', { bubbles: true });
+      selectedTextarea.dispatchEvent(event);
+
+      // Also trigger save
+      saveAnnotation(selectedTextarea);
+    }
+
+    // Handle textarea input (update highlights)
+    function handleTextAreaInput(e) {
+      highlightChipsForSelectedTextarea();
+    }
+
+    // Handle textarea blur (save and update chips)
+    async function handleTextAreaBlur(e) {
+      const textarea = e.target;
+
+      // Save annotation
+      await saveAnnotation(textarea);
+    }
+
+    // Handle tile click (select the tile)
+    function handleTileClick(e) {
+      const tile = e.currentTarget;
+
+      // Don't re-select if already selected
+      if (selectedTile === tile) {
+        return;
+      }
+
+      selectTile(tile);
     }
 
     // Load existing images and their annotations from server
     async function loadImages() {
       showLoading(true);
-      
+
       try {
         const response = await fetch('/api/images');
-        
+
         if (response.ok) {
           const data = await response.json();
           currentImages = data.images;
+
+          if (currentImages.length > 0) {
+            switchToAnnotationMode();
+            clearBtn.disabled = false;
+            renderKeywordChips();
+          }
+
           renderImageTiles(currentImages);
         }
       } catch (error) {
@@ -257,20 +544,17 @@
       }
 
       let html = '';
-      
+
       images.forEach((item) => {
-        // Use /image/ endpoint for full paths
         const imageUrl = `/image/${encodeURIComponent(item.fullPath)}`;
-        
-        // Get filename for display
         const fileName = item.image?.name || item.image;
-        
+
         html += `
           <div class="tile is-child box image-tile" data-image="${encodeURIComponent(fileName)}" data-fullpath="${encodeURIComponent(item.fullPath || '')}">
             <div class="tile-content">
               <div class="thumbnail-container">
-                <img src="${imageUrl}" alt="${fileName}" class="thumbnail" loading="lazy" onerror="console.error('Image failed to load:', this.src)">
-              </div>
+                <img src="${imageUrl}" alt="${fileName}" class="thumbnail" loading="lazy">
+              </div>              
               <div class="annotation-container">
                 <div class="level">
                   <div class="level-left">
@@ -295,82 +579,89 @@
 
       imageContainer.innerHTML = html;
 
+      // Add event listeners to tiles (for clicking anywhere)
+      document.querySelectorAll('.image-tile').forEach(tile => {
+        tile.addEventListener('click', handleTileClick);
+      });
+
       // Add event listeners to text areas
       document.querySelectorAll('.annotation-text').forEach(textarea => {
-        textarea.addEventListener('blur', handleAnnotationBlur);
+        textarea.addEventListener('blur', handleTextAreaBlur);
+        textarea.addEventListener('input', handleTextAreaInput);
       });
     }
 
-    // Handle annotation text area blur (save to server)
-    async function handleAnnotationBlur(e) {
-      const textarea = e.target;
-      const imageFileEncoded = textarea.dataset.image;
-      const fullPathEncoded = textarea.dataset.fullpath;
-      const annotation = textarea.value;
-      
-      // Decode the filename
-      const imageFile = decodeURIComponent(imageFileEncoded);
-      
-      // Get full path if available
-      let directoryPath = currentDirectory;
-      if (fullPathEncoded) {
-        const fullPath = decodeURIComponent(fullPathEncoded);
-        
-        // Extract directory from full path using string manipulation
-        if (fullPath) {
-          const lastSlash = fullPath.lastIndexOf('/');
-          if (lastSlash > -1) {
-            directoryPath = fullPath.substring(0, lastSlash);
-          }
-        }
-      }
-      
-      // Show saving indicator
-      const saveStatus = textarea.previousElementSibling?.querySelector('.save-status');
-      if (saveStatus) {
-        saveStatus.textContent = 'Saving...';
-        saveStatus.style.color = '#3273dc';
+    // Clear images
+    function clearImages() {
+      selectedTile = null;
+      selectedTextarea = null;
+
+      currentDirectory = '';
+      directoryPathInput.value = '';
+      currentImages = [];
+
+      switchToInitialMode();
+      imageContainer.innerHTML = '';
+      clearBtn.disabled = true;
+    }
+
+    // Handle directory scan
+    async function handleScanDirectory() {
+      let dirPath = directoryPathInput.value.trim();
+
+      if (!dirPath) {
+        alert('Please enter a directory path');
+        return;
       }
 
+      dirPath = cleanPath(dirPath);
+
+      if (!dirPath) {
+        alert('Please enter a valid directory path');
+        return;
+      }
+
+      showLoading(true);
+
       try {
-        const response = await fetch('/api/annotations', {
+        const response = await fetch('/api/scandir', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            directoryPath: directoryPath,
-            imageFile: imageFile,
-            annotation: annotation
-          })
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ directoryPath: dirPath })
         });
 
         const data = await response.json();
 
-        if (data.success) {
-          // Show success indicator
-          if (saveStatus) {
-            saveStatus.textContent = 'Saved';
-            setTimeout(() => {
-              saveStatus.textContent = '';
-            }, 2000);
-          }
+        if (response.ok) {
+          currentDirectory = data.directory;
+          currentImages = data.images;
+
+          switchToAnnotationMode();
+          clearBtn.disabled = false;
+          renderKeywordChips();
+          renderImageTiles(currentImages);
         } else {
-          // Show error
-          if (saveStatus) {
-            saveStatus.textContent = 'Error saving';
-            saveStatus.style.color = '#ff3860';
-          }
+          alert('Error: ' + data.error);
         }
       } catch (error) {
-        console.error('Error saving annotation:', error);
-        
-        // Show error
-        if (saveStatus) {
-          saveStatus.textContent = 'Error saving';
-          saveStatus.style.color = '#ff3860';
-        }
+        console.error('Error scanning directory:', error);
+        alert('Failed to scan directory');
+      } finally {
+        showLoading(false);
       }
+    }
+
+    // Clean path function (remove quotes)
+    function cleanPath(dirPath) {
+      if (!dirPath) return '';
+
+      let cleaned = dirPath.trim();
+      if ((cleaned.startsWith('"') && cleaned.endsWith('"')) ||
+        (cleaned.startsWith("'") && cleaned.endsWith("'"))) {
+        cleaned = cleaned.slice(1, -1);
+      }
+
+      return cleaned;
     }
 
     // Show/hide loading overlay
@@ -394,4 +685,5 @@
     }
   </script>
 </body>
+
 </html>
