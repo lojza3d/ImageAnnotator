@@ -353,11 +353,11 @@ function renderImageTiles(images) {
                 <img src="${imageUrl}" alt="${fileName}" class="thumbnail" loading="lazy">
               </figure>
             </div>
-            <div class="media-content">
+            <div class="media-content" style="overflow: hidden;">
               <div class="content">
                 <div class="level">
                   <div class="level-left">
-                    <span><strong>${fileName}</strong></span>
+                    <span><strong alt="${fileName}">${fileName}</strong></span>
                   </div>
                   <div class="level-right">
                     <div class="level-item">
