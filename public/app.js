@@ -16,7 +16,8 @@ const DOM = {
   loadingOverlay: document.getElementById('loading-overlay'),
   initialModeDiv: document.getElementById('initial-mode'),
   annotationModeDiv: document.getElementById('annotation-mode'),
-  keywordChipsContainer: document.getElementById('keyword-chips-container')
+  keywordChipsContainer: document.getElementById('keyword-chips-container'),
+  previewOverlay: document.getElementById('image-preview-overlay')
 };
 
 // Load existing images on page load
@@ -40,32 +41,38 @@ function switchToAnnotationMode() {
   DOM.annotationModeDiv.style.display = 'block';
 }
 
-// Select tile (keep at least one selected if possible)
-function selectTile(tile) {
-  // Deselect previous tile only if we're selecting a different one
-  if (AppState.selectedTile && AppState.selectedTile !== tile) {
+function setSelection(tile) {
+  // If selecting the same tile, do nothing to avoid redundant work
+  if (AppState.selectedTile === tile) {
+    return;
+  }
+
+  // 1. Deselect previous tile if it exists
+  if (AppState.selectedTile) {
     AppState.selectedTile.classList.remove('is-primary');
     AppState.selectedTile.classList.remove('has-background-success-light');
     AppState.selectedTextarea?.classList.remove('is-success');
   }
 
-  // Select new tile
+  // 2. Update AppState and selection info
   AppState.selectedTile = tile;
-  AppState.selectedTextarea = tile.querySelector('.annotation-text');
+  if (tile) {
+    AppState.selectedTextarea = tile.querySelector('.annotation-text');
+    // 3. Highlight new tile
+    tile.classList.add('is-primary');
+    tile.classList.add('has-background-success-light');
+    AppState.selectedTextarea?.classList.add('is-success');
+  } else {
+    AppState.selectedTextarea = null;
+  }
 
-  // Highlight tile
-  tile.classList.add('is-primary');
-  tile.classList.add('has-background-success-light');
-  AppState.selectedTextarea?.classList.add('is-success');
-
-  // Update chip highlights based on new selection
+  // 4. Always trigger chip highlight update to ensure UI consistency
   highlightChipsForSelectedTextarea();
 }
 
 // Clear images
 function clearImages() {
-  AppState.selectedTile = null;
-  AppState.selectedTextarea = null;
+  setSelection(null);
 
   AppState.currentDirectory = '';
   DOM.directoryPathInput.value = '';
@@ -128,6 +135,9 @@ function renderKeywordChips() {
   document.querySelectorAll('.keyword-chip').forEach(chip => {
     chip.addEventListener('click', handleChipClick);
   });
+
+  // Ensure newly rendered chips are immediately synchronized with the current selection
+  highlightChipsForSelectedTextarea();
 }
 
 // Highlight chips based on selected textarea
@@ -203,6 +213,7 @@ async function saveAnnotation(textarea) {
 
       // Show success indicator
       if (saveStatus) {
+        saveStatus.style.color = '#48c774';
         saveStatus.textContent = 'Saved';
         setTimeout(() => {
           saveStatus.textContent = '';
@@ -232,47 +243,46 @@ function handleChipClick(e) {
   const chip = e.currentTarget;
   const keyword = chip.dataset.keyword;
 
-  // If no tile/textarea selected, do nothing
+  // Ensure a textarea is selected; otherwise do nothing.
   if (!AppState.selectedTextarea) {
     return;
   }
 
-  // Get current annotation from selected textarea
-  let annotation = AppState.selectedTextarea.value;
+  // Grab the current annotation and split it into a clean keyword array.
+  let annotation = AppState.selectedTextarea.value.trim();
+  const keywords = extractKeywords(annotation);   // actual list of keywords
 
-  if (chip.classList.contains('highlighted')) {
-    // Remove keyword
-    const keywords = extractKeywords(annotation);
+  // Determine whether the keyword is already present.
+  const hasKeyword = keywords.includes(keyword);
+
+  if (hasKeyword) {
+    // ---- Remove the keyword ----
     const index = keywords.indexOf(keyword);
-
     if (index > -1) {
-      keywords.splice(index, 1);
+      keywords.splice(index, 1);               // remove one occurrence
     }
-
-    AppState.selectedTextarea.value = keywords.join(', ');
+    // Re‑join the array back into a string (preserve existing comma style)
+    annotation = keywords.join(', ');
   } else {
-    // Add keyword
-    if (annotation.trim()) {
-      if (!annotation.endsWith(', ')) {
-        annotation += ', ';
-      }
-    } else {
-      annotation = '';
+    // ---- Add the keyword (avoid duplicates) ----
+    if (!keywords.includes(keyword)) {
+      // Ensure proper comma spacing: add ", " only if there is already content.
+      const separator = annotation ? ', ' : '';
+      annotation += separator + keyword;
     }
-
-    annotation += keyword;
-    AppState.selectedTextarea.value = annotation;
   }
 
-  // Trigger input to update highlights
-  const event = new Event('input', { bubbles: true });
-  AppState.selectedTextarea.dispatchEvent(event);
+  // Update the textarea value.
+  AppState.selectedTextarea.value = annotation;
 
-  // Also trigger save
+  // Dispatch an input event so any UI that depends on the textarea's content
+  // (e.g., chip highlighting) is refreshed automatically.
+  const inputEvent = new Event('input', { bubbles: true });
+  AppState.selectedTextarea.dispatchEvent(inputEvent);
+
+  // Persist the annotation and re‑highlight chips based on the new content.
   saveAnnotation(AppState.selectedTextarea);
-
-  //Also highlight chips
-  highlightChipsForSelectedTextarea()
+  highlightChipsForSelectedTextarea();
 }
 
 // Handle textarea input (update highlights)
@@ -290,14 +300,7 @@ async function handleTextAreaBlur(e) {
 
 // Handle tile click (select the tile)
 function handleTileClick(e) {
-  const tile = e.currentTarget;
-
-  // Don't re-select if already selected
-  if (AppState.selectedTile === tile) {
-    return;
-  }
-
-  selectTile(tile);
+  setSelection(e.currentTarget);
 }
 
 // Load existing images and their annotations from server
@@ -346,7 +349,7 @@ function renderImageTiles(images) {
         <div class="tile is-child box image-tile" data-image="${encodeURIComponent(fileName)}" data-fullpath="${encodeURIComponent(item.fullPath || '')}">
           <article class="media">
             <div class="media-left">
-              <figure class="image is-128x128">
+              <figure class="image">
                 <img src="${imageUrl}" alt="${fileName}" class="thumbnail" loading="lazy">
               </figure>
             </div>
@@ -364,6 +367,7 @@ function renderImageTiles(images) {
                 </div>
                 <textarea 
                   class="textarea annotation-text" 
+                  rows="3"
                   placeholder="Enter annotation for this image..."
                   data-image="${encodeURIComponent(fileName)}"
                   data-fullpath="${encodeURIComponent(item.fullPath || '')}"
@@ -385,6 +389,30 @@ function renderImageTiles(images) {
   document.querySelectorAll('.annotation-text').forEach(textarea => {
     textarea.addEventListener('blur', handleTextAreaBlur);
     textarea.addEventListener('input', handleTextAreaInput);
+  });
+
+  // Add event listeners to thumbnails for preview
+  document.querySelectorAll('.thumbnail').forEach(img => {
+    img.addEventListener('mouseenter', (e) => {
+      if (DOM.previewOverlay) {
+        DOM.previewOverlay.src = e.target.src;
+        DOM.previewOverlay.style.display = 'block';
+      }
+    });
+
+    img.addEventListener('mousemove', (e) => {
+      if (DOM.previewOverlay) {
+        const offset = 15;
+        DOM.previewOverlay.style.left = (e.clientX + offset) + 'px';
+        DOM.previewOverlay.style.top = (e.clientY + offset) + 'px';
+      }
+    });
+
+    img.addEventListener('mouseleave', () => {
+      if (DOM.previewOverlay) {
+        DOM.previewOverlay.style.display = 'none';
+      }
+    });
   });
 }
 
