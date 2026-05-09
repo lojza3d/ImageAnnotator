@@ -312,7 +312,7 @@ app.post('/api/llm/load', async (req, res) => {
 // API endpoint to annotate an image
 app.post('/api/llm/annotate', async (req, res) => {
   try {
-    const { model, endpoint, imagePath } = req.body;
+    const { model, endpoint, imagePath, prompt } = req.body;
     const llmEndpoint = endpoint || 'http://localhost:1234';
     const chatUrl = `${llmEndpoint.trim()}/api/v1/chat`;
 
@@ -379,7 +379,7 @@ app.post('/api/llm/annotate', async (req, res) => {
     const uniqueKeywords = [...new Set(keywords)];
     const result = uniqueKeywords.join(', ');
 
-    res.json({ success: true, result: result, imagePath: imagePath });
+    res.json({ success: true, result: result, imagePath: imagePath, model_instance_id: data.model_instance_id });
   } catch (error) {
     console.error('Error annotating image:', error);
     res.status(500).json({ error: 'Failed to annotate image' });

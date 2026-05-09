@@ -109,28 +109,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       AppState.isStopped = true;
       stopAnnotatingBtn.disabled = true;
       stopAnnotatingBtn.textContent = 'Stopping...';
-      
-      // Unload model if it's loaded
-      if (AppState.llmInstanceId) {
-        try {
-          await fetch('/api/llm/unload', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              endpoint: AppState.llmEndpoint,
-              instance_id: AppState.llmInstanceId
-            })
-          });
-        } catch (error) {
-          console.error('Error unloading model:', error);
-        }
-      }
-      
-      AppState.isAnnotating = false;
-      AppState.isStopped = false;
-      stopAnnotatingBtn.style.display = 'none';
-      document.getElementById('llm-annotation-progress').style.display = 'none';
-      startAnnotatingBtn.disabled = false;
     });
   }
 
@@ -327,6 +305,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         llmResult = data.result;
 
+        // Store model_instance_id if returned
+        if (data.model_instance_id) {
+          AppState.llmInstanceId = data.model_instance_id;
+        }
+
         // Find the textarea for this image
         const textarea = tile?.querySelector('.annotation-text');
         if (textarea) {
@@ -339,15 +322,15 @@ document.addEventListener('DOMContentLoaded', async () => {
               ...existingAnnotation.split(','),
               ...llmResult.split(',')
             ]
-            .map(k => k.trim())
-            .filter(k => k);
+              .map(k => k.trim())
+              .filter(k => k);
             const uniqueKeywords = [...new Set(combinedKeywords)];
             newAnnotation = uniqueKeywords.join(', ');
           }
 
           textarea.value = newAnnotation;
           textarea.dispatchEvent(new Event('input', { bubbles: true }));
-          
+
           // Trigger save
           await saveAnnotationDirect(textarea);
         }
@@ -357,11 +340,34 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // Loop completed or stopped
+    // Unload model if instance_id is available
+    if (AppState.llmInstanceId) {
+      try {
+        await fetch('/api/llm/unload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            endpoint: AppState.llmEndpoint,
+            instance_id: AppState.llmInstanceId
+          })
+        });
+      } catch (error) {
+        console.error('Error unloading model:', error);
+      }
+      AppState.llmInstanceId = null;
+    }
+
+    // Reset state
+    AppState.isAnnotating = false;
+    AppState.isStopped = false;
+
+    // Update GUI
     progressEl.style.display = 'none';
     stopBtn.style.display = 'none';
-    startBtn.disabled = false;
     stopBtn.disabled = false;
     stopBtn.textContent = 'Stop annotating';
+    startBtn.disabled = false;
+    startBtn.classList.remove('is-loading');
   }
 });
 
