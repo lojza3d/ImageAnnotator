@@ -1,1 +1,0 @@
-Describe this image in a few words. Create annotation for generative models. Divide keywords and/or phrases by a commas ",". Don't create any other output, just the description.

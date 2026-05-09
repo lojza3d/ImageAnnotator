@@ -5,7 +5,13 @@ const AppState = {
   keywordCounts: {}, // { keyword: count }
   selectedTile: null,
   selectedTextarea: null,
-  llmEndpoint: 'http://localhost:1234'
+  llmEndpoint: 'http://localhost:1234',
+  isAnnotating: false,
+  isStopped: false,
+  llmInstanceId: null,
+  selectedLlmModel: null,
+  llmAnnotationMode: 'add',
+  llmPrompt: ''
 };
 
 // Tab state
@@ -96,6 +102,38 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
+  // Stop annotating button
+  const stopAnnotatingBtn = document.getElementById('stop-annotating-btn');
+  if (stopAnnotatingBtn) {
+    stopAnnotatingBtn.addEventListener('click', async () => {
+      AppState.isStopped = true;
+      stopAnnotatingBtn.disabled = true;
+      stopAnnotatingBtn.textContent = 'Stopping...';
+      
+      // Unload model if it's loaded
+      if (AppState.llmInstanceId) {
+        try {
+          await fetch('/api/llm/unload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              endpoint: AppState.llmEndpoint,
+              instance_id: AppState.llmInstanceId
+            })
+          });
+        } catch (error) {
+          console.error('Error unloading model:', error);
+        }
+      }
+      
+      AppState.isAnnotating = false;
+      AppState.isStopped = false;
+      stopAnnotatingBtn.style.display = 'none';
+      document.getElementById('llm-annotation-progress').style.display = 'none';
+      startAnnotatingBtn.disabled = false;
+    });
+  }
+
   // Start annotating images button
   const startAnnotatingBtn = document.getElementById('start-annotating-btn');
   if (startAnnotatingBtn) {
@@ -117,44 +155,213 @@ document.addEventListener('DOMContentLoaded', async () => {
       startAnnotatingBtn.disabled = true;
 
       try {
-        const response = await fetch('/api/llm/load', {
+        const promptInput = document.getElementById('llm-prompt');
+        AppState.selectedLlmModel = selectedModel;
+        AppState.llmAnnotationMode = annotationMode;
+        AppState.llmPrompt = promptInput ? promptInput.value : '';
+        AppState.isAnnotating = true;
+        AppState.isStopped = false;
+        AppState.llmInstanceId = selectedModel;
+
+        startAnnotationLoop();
+      } catch (error) {
+        startAnnotatingBtn.classList.remove('is-loading');
+        startAnnotatingBtn.disabled = false;
+        console.error('Error setting up annotation:', error);
+        alert('Failed to set up annotation: ' + error.message);
+      }
+    });
+  }
+
+  // Helper to read image and convert to base64
+  async function getImageBase64(imagePath) {
+    try {
+      const response = await fetch(`/image/${encodeURIComponent(imagePath)}`);
+      if (!response.ok) {
+        return null;
+      }
+      const blob = await response.blob();
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch (error) {
+      console.error('Error reading image:', error);
+      return null;
+    }
+  }
+
+  // Helper to save annotation for a specific textarea
+  async function saveAnnotationDirect(textarea) {
+    const imageFileEncoded = textarea.dataset.image;
+    const fullPathEncoded = textarea.dataset.fullpath;
+    const annotation = textarea.value;
+
+    const imageFile = decodeURIComponent(imageFileEncoded);
+    let directoryPath = AppState.currentDirectory;
+    if (fullPathEncoded) {
+      const fullPath = decodeURIComponent(fullPathEncoded);
+      const lastSlash = fullPath.lastIndexOf('/');
+      if (lastSlash > -1) {
+        directoryPath = fullPath.substring(0, lastSlash);
+      }
+    }
+
+    const saveStatus = textarea.previousElementSibling?.querySelector('.save-status');
+    if (saveStatus) {
+      saveStatus.textContent = 'Saving...';
+      saveStatus.style.color = '#3273dc';
+    }
+
+    try {
+      const response = await fetch('/api/annotations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          directoryPath: directoryPath,
+          imageFile: imageFile,
+          annotation: annotation
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        const imageFileKey = decodeURIComponent(imageFileEncoded);
+        const imageIndex = AppState.currentImages.findIndex(img => img.image?.name === imageFileKey || img.fullPath.includes(imageFileKey));
+        if (imageIndex > -1) {
+          AppState.currentImages[imageIndex].annotation = annotation;
+        }
+
+        if (saveStatus) {
+          saveStatus.style.color = '#48c774';
+          saveStatus.textContent = 'Saved';
+          setTimeout(() => {
+            saveStatus.textContent = '';
+          }, 2000);
+        }
+
+        renderKeywordChips();
+      } else {
+        if (saveStatus) {
+          saveStatus.textContent = 'Error saving';
+          saveStatus.style.color = '#ff3860';
+        }
+      }
+    } catch (error) {
+      console.error('Error saving annotation:', error);
+      if (saveStatus) {
+        saveStatus.textContent = 'Error saving';
+        saveStatus.style.color = '#ff3860';
+      }
+    }
+  }
+
+  // Main annotation loop function
+  async function startAnnotationLoop() {
+    const progressEl = document.getElementById('llm-annotation-progress');
+    const stopBtn = document.getElementById('stop-annotating-btn');
+    const startBtn = document.getElementById('start-annotating-btn');
+    const totalImages = AppState.currentImages.length;
+
+    progressEl.style.display = 'block';
+    stopBtn.style.display = 'block';
+    stopBtn.disabled = false;
+    stopBtn.textContent = 'Stop annotating';
+    startBtn.disabled = true;
+
+    for (let i = 0; i < totalImages; i++) {
+      if (AppState.isStopped) {
+        break;
+      }
+
+      const item = AppState.currentImages[i];
+      const currentNum = i + 1;
+      progressEl.textContent = `Annotating ${currentNum} of ${totalImages}...`;
+
+      // Find the tile and save status
+      const tile = document.querySelector(`.image-tile[data-image="${encodeURIComponent(item.image.name || item.image)}"]`);
+      if (tile) {
+        const saveStatus = tile.querySelector('.save-status');
+        if (saveStatus) {
+          saveStatus.textContent = 'Generating annotation...';
+          saveStatus.style.color = '#3273dc';
+        }
+      }
+
+      // Get image base64
+      const imageBase64 = await getImageBase64(item.fullPath);
+      if (!imageBase64) {
+        console.error('Failed to read image:', item.fullPath);
+        continue;
+      }
+
+      // Call BE endpoint
+      let llmResult = '';
+      try {
+        const response = await fetch('/api/llm/annotate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            model: selectedModel,
+            model: AppState.selectedLlmModel,
             endpoint: AppState.llmEndpoint,
-            echo_load_config: true
+            imagePath: item.fullPath,
+            prompt: AppState.llmPrompt || null
           })
         });
 
         const data = await response.json();
-
         if (data.error) {
-          alert('Error loading model: ' + data.error);
-          return;
+          console.error('LLM Annotate Error:', data.error);
+          if (tile) {
+            const saveStatus = tile.querySelector('.save-status');
+            if (saveStatus) {
+              saveStatus.textContent = 'LLM Error';
+              saveStatus.style.color = '#ff3860';
+            }
+          }
+          continue;
         }
 
-        if (data.status === 'loaded') {
-          // Store model info and prompt for the next step
-          const promptInput = document.getElementById('llm-prompt');
-          AppState.selectedLlmModel = selectedModel;
-          AppState.llmAnnotationMode = annotationMode;
-          AppState.llmPrompt = promptInput ? promptInput.value : '';
-          AppState.isAnnotating = true;
+        llmResult = data.result;
 
-          alert('Model loaded successfully. Starting annotation loop...');
-          // TODO: Start the annotation loop here
-        } else {
-          alert('Model loading failed: ' + JSON.stringify(data));
+        // Find the textarea for this image
+        const textarea = tile?.querySelector('.annotation-text');
+        if (textarea) {
+          let newAnnotation = '';
+          if (AppState.llmAnnotationMode === 'replace') {
+            newAnnotation = llmResult;
+          } else {
+            const existingAnnotation = textarea.value;
+            const combinedKeywords = [
+              ...existingAnnotation.split(','),
+              ...llmResult.split(',')
+            ]
+            .map(k => k.trim())
+            .filter(k => k);
+            const uniqueKeywords = [...new Set(combinedKeywords)];
+            newAnnotation = uniqueKeywords.join(', ');
+          }
+
+          textarea.value = newAnnotation;
+          textarea.dispatchEvent(new Event('input', { bubbles: true }));
+          
+          // Trigger save
+          await saveAnnotationDirect(textarea);
         }
       } catch (error) {
-        console.error('Error loading model:', error);
-        alert('Failed to load model: ' + error.message);
-      } finally {
-        startAnnotatingBtn.classList.remove('is-loading');
-        startAnnotatingBtn.disabled = false;
+        console.error('Error during annotation:', error);
       }
-    });
+    }
+
+    // Loop completed or stopped
+    progressEl.style.display = 'none';
+    stopBtn.style.display = 'none';
+    startBtn.disabled = false;
+    stopBtn.disabled = false;
+    stopBtn.textContent = 'Stop annotating';
   }
 });
 

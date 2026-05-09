@@ -9,17 +9,29 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.static('public'));
 
+const fs = require('fs');
+const pathModule = require('path');
+
+// Read system prompt
+const SYSTEM_PROMPT_PATH = pathModule.join(__dirname, 'annotate_system_prompt.md');
+let systemPrompt = 'You are an image annotation assistant. Provide a comma-separated list of keywords describing the image.';
+try {
+  systemPrompt = fs.readFileSync(SYSTEM_PROMPT_PATH, 'utf8');
+} catch (err) {
+  console.warn('annotate_system_prompt.md not found, using default system prompt.');
+}
+
 // Helper function to clean directory path (remove quotes)
 function cleanPath(dirPath) {
   if (!dirPath) return '';
-  
+
   // Remove surrounding quotes (both single and double)
   let cleaned = dirPath.trim();
-  if ((cleaned.startsWith('"') && cleaned.endsWith('"')) || 
-      (cleaned.startsWith("'") && cleaned.endsWith("'"))) {
+  if ((cleaned.startsWith('"') && cleaned.endsWith('"')) ||
+    (cleaned.startsWith("'") && cleaned.endsWith("'"))) {
     cleaned = cleaned.slice(1, -1);
   }
-  
+
   return cleaned;
 }
 
@@ -27,14 +39,14 @@ function cleanPath(dirPath) {
 app.post('/api/scandir', async (req, res) => {
   try {
     let { directoryPath } = req.body;
-    
+
     if (!directoryPath) {
       return res.status(400).json({ error: 'Directory path is required' });
     }
-    
+
     // Clean the path (remove quotes)
     directoryPath = cleanPath(directoryPath);
-    
+
     if (!directoryPath) {
       return res.status(400).json({ error: 'Directory path is required' });
     }
@@ -42,10 +54,10 @@ app.post('/api/scandir', async (req, res) => {
     // Security check - prevent directory traversal
     const resolvedPath = path.resolve(directoryPath);
     const appRoot = path.resolve(__dirname);
-    
+
     // Only allow directories within the app root or user's home directory
     const allowedPaths = [appRoot, process.env.HOME];
-    
+
     if (!allowedPaths.some(allowed => resolvedPath.startsWith(allowed))) {
       return res.status(403).json({ error: 'Access denied to this directory' });
     }
@@ -59,7 +71,7 @@ app.post('/api/scandir', async (req, res) => {
 
     // Get all files in directory
     const files = fsSync.readdirSync(resolvedPath);
-    
+
     // Filter for image files
     const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
     const imageFiles = files.filter(file => {
@@ -73,7 +85,7 @@ app.post('/api/scandir', async (req, res) => {
         const baseName = path.basename(imageFile, path.extname(imageFile));
         const txtFile = `${baseName}.txt`;
         const txtPath = path.join(resolvedPath, txtFile);
-        
+
         let annotation = '';
         try {
           fsSync.accessSync(txtPath);
@@ -81,7 +93,7 @@ app.post('/api/scandir', async (req, res) => {
         } catch (err) {
           // File doesn't exist or can't be read
         }
-        
+
         return {
           image: {
             name: imageFile,
@@ -93,9 +105,9 @@ app.post('/api/scandir', async (req, res) => {
       })
     );
 
-    res.json({ 
+    res.json({
       directory: resolvedPath,
-      images: imagesWithAnnotations 
+      images: imagesWithAnnotations
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to scan directory' });
@@ -108,21 +120,21 @@ app.post('/api/annotations', async (req, res) => {
     let directoryPath = req.body.directoryPath;
     let imageFile = req.body.imageFile;
     const annotation = req.body.annotation;
-    
+
     if (!directoryPath || !imageFile) {
       return res.status(400).json({ error: 'Directory path and image file name are required' });
     }
-    
+
     // Clean the directory path
     let cleanedPath = cleanPath(directoryPath);
     if (cleanedPath) {
       directoryPath = cleanedPath;
     }
-    
+
     // Security check
     const resolvedPath = path.resolve(directoryPath);
     const appRoot = path.resolve(__dirname);
-    
+
     if (!resolvedPath.startsWith(appRoot) && !resolvedPath.startsWith(process.env.HOME)) {
       return res.status(403).json({ error: 'Access denied to this directory' });
     }
@@ -132,7 +144,7 @@ app.post('/api/annotations', async (req, res) => {
 
     // Write annotation to txt file
     fsSync.writeFileSync(txtFilePath, annotation, 'utf8');
-    
+
     res.json({ success: true, message: 'Annotation saved successfully' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to save annotation' });
@@ -143,22 +155,22 @@ app.post('/api/annotations', async (req, res) => {
 app.get('/image/*', (req, res) => {
   // Extract the path from the URL
   const encodedPath = req.params[0];
-  
+
   try {
     // Decode the path (URL-encoded)
     const decodedPath = decodeURIComponent(encodedPath);
-    
+
     // Security check - prevent directory traversal
     const resolvedPath = path.resolve(decodedPath);
     const appRoot = path.resolve(__dirname);
-    
+
     // Only allow directories within the app root or user's home directory
     const allowedPaths = [appRoot, process.env.HOME];
-    
+
     if (!allowedPaths.some(allowed => resolvedPath.startsWith(allowed))) {
       return res.status(403).send('Access denied');
     }
-    
+
     // Check if file exists
     try {
       fsSync.accessSync(resolvedPath);
@@ -174,13 +186,13 @@ app.get('/image/*', (req, res) => {
       '.webp': 'image/webp',
       '.bmp': 'image/bmp'
     }[ext] || 'application/octet-stream';
-    
+
     res.setHeader('Content-Type', contentType);
-    
+
     // Stream the file
     const readStream = fsSync.createReadStream(resolvedPath);
     readStream.pipe(res);
-    
+
     readStream.on('error', (err) => {
       res.status(500).send('Error reading image');
     });
@@ -193,7 +205,7 @@ app.get('/image/*', (req, res) => {
 app.get('/api/images', async (req, res) => {
   try {
     const uploadsDir = path.join(__dirname, 'uploads');
-    
+
     // Check if uploads directory exists
     try {
       fsSync.accessSync(uploadsDir);
@@ -202,7 +214,7 @@ app.get('/api/images', async (req, res) => {
     }
 
     const files = fsSync.readdirSync(uploadsDir);
-    
+
     // Filter for image files
     const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
     const imageFiles = files.filter(file => {
@@ -216,7 +228,7 @@ app.get('/api/images', async (req, res) => {
         const baseName = path.basename(imageFile, path.extname(imageFile));
         const txtFile = `${baseName}.txt`;
         const txtPath = path.join(uploadsDir, txtFile);
-        
+
         let annotation = '';
         try {
           fsSync.accessSync(txtPath);
@@ -224,7 +236,7 @@ app.get('/api/images', async (req, res) => {
         } catch (err) {
           // File doesn't exist or can't be read
         }
-        
+
         return {
           image: {
             name: imageFile,
@@ -294,6 +306,109 @@ app.post('/api/llm/load', async (req, res) => {
   } catch (error) {
     console.error('Error loading model:', error);
     res.status(500).json({ error: 'Failed to load model' });
+  }
+});
+
+// API endpoint to annotate an image
+app.post('/api/llm/annotate', async (req, res) => {
+  try {
+    const { model, endpoint, imagePath } = req.body;
+    const llmEndpoint = endpoint || 'http://localhost:1234';
+    const chatUrl = `${llmEndpoint.trim()}/api/v1/chat`;
+
+    // Read the image file
+    const resolvedPath = pathModule.resolve(imagePath);
+    if (!resolvedPath.startsWith(pathModule.resolve(process.env.HOME || '/')) && !resolvedPath.startsWith(pathModule.resolve(__dirname))) {
+      return res.status(403).json({ error: 'Access denied to this path' });
+    }
+
+    let imageBuffer;
+    try {
+      imageBuffer = fs.readFileSync(resolvedPath);
+    } catch (err) {
+      return res.status(404).json({ error: 'Image file not found' });
+    }
+
+    const base64Image = imageBuffer.toString('base64');
+    const ext = pathModule.extname(resolvedPath).toLowerCase();
+    let mimeType = 'image/jpeg';
+    if (ext === '.png') mimeType = 'image/png';
+    else if (ext === '.gif') mimeType = 'image/gif';
+    else if (ext === '.webp') mimeType = 'image/webp';
+
+    // Construct input
+    const promptInput = {
+      type: 'text',
+      content: 'Describe the key elements of this image.'
+    };
+
+    const imageInput = {
+      type: 'image',
+      data_url: `data:${mimeType};base64,${base64Image}`
+    };
+
+    const response = await fetch(chatUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: model,
+        input: [promptInput, imageInput],
+        system_prompt: systemPrompt,
+        context_length: 8192,
+        temperature: 0.3
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      return res.status(response.status).json({ error: errorData.error || `LM Studio returned status ${response.status}` });
+    }
+
+    const data = await response.json();
+
+    // Extract content from output
+    const message = data.output?.find(item => item.type === 'message');
+    if (!message || !message.content) {
+      return res.status(500).json({ error: 'No text content found in LLM response' });
+    }
+
+    // Post-process: split by comma, trim, deduplicate, join
+    const keywords = message.content.split(',')
+      .map(k => k.trim())
+      .filter(k => k.length > 0);
+    const uniqueKeywords = [...new Set(keywords)];
+    const result = uniqueKeywords.join(', ');
+
+    res.json({ success: true, result: result, imagePath: imagePath });
+  } catch (error) {
+    console.error('Error annotating image:', error);
+    res.status(500).json({ error: 'Failed to annotate image' });
+  }
+});
+
+// API endpoint to unload a model
+app.post('/api/llm/unload', async (req, res) => {
+  try {
+    const { endpoint, instance_id } = req.body;
+    const llmEndpoint = endpoint || 'http://localhost:1234';
+    const unloadUrl = `${llmEndpoint.trim()}/api/v1/models/unload`;
+
+    const response = await fetch(unloadUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ instance_id })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      return res.status(response.status).json({ error: errorData.error || `LM Studio returned status ${response.status}` });
+    }
+
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error('Error unloading model:', error);
+    res.status(500).json({ error: 'Failed to unload model' });
   }
 });
 
