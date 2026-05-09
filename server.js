@@ -245,6 +245,58 @@ app.get('/api/images', async (req, res) => {
 // Serve uploads directory as static
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+// API endpoint for LLM models
+app.get('/api/llm/models', async (req, res) => {
+  try {
+    const llmEndpoint = req.query.endpoint || 'http://localhost:1234';
+    const modelsUrl = `${llmEndpoint.trim()}/v1/models`;
+    const response = await fetch(modelsUrl);
+    if (!response.ok) {
+      return res.status(response.status).json({ error: 'Failed to fetch models from LM Studio' });
+    }
+    const data = await response.json();
+    console.log('LM Studio response:', JSON.stringify(data, null, 2));
+    const models = (data.data || []).map(m => ({
+      display_name: m.id || m.display_name || 'Unknown',
+      loaded: Array.isArray(m.loaded_instances) && m.loaded_instances.length > 0
+    }));
+    res.json(models);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch models' });
+  }
+});
+
+// API endpoint to load a model
+app.post('/api/llm/load', async (req, res) => {
+  try {
+    const { model, endpoint, context_length, flash_attention, echo_load_config } = req.body;
+    const llmEndpoint = endpoint || 'http://localhost:1234';
+    const loadUrl = `${llmEndpoint.trim()}/api/v1/models/load`;
+
+    const payload = { model, echo_load_config: echo_load_config || false };
+    if (context_length) payload.context_length = context_length;
+    if (flash_attention !== undefined) payload.flash_attention = flash_attention;
+
+    const response = await fetch(loadUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      return res.status(response.status).json({ error: errorData.error || `LM Studio returned status ${response.status}` });
+    }
+
+    const data = await response.json();
+    console.log('Model load response:', JSON.stringify(data, null, 2));
+    res.json(data);
+  } catch (error) {
+    console.error('Error loading model:', error);
+    res.status(500).json({ error: 'Failed to load model' });
+  }
+});
+
 // Start server
 app.listen(PORT, () => {
   console.log('Image Annotator running at http://localhost:' + PORT);

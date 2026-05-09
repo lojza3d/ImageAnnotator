@@ -58,6 +58,102 @@ document.addEventListener('DOMContentLoaded', async () => {
   const tabHeaders = document.querySelectorAll('#annotation-mode .tabs li');
   tabHeaders[0].addEventListener('click', () => switchTab('keywords'));
   tabHeaders[1].addEventListener('click', () => switchTab('llm'));
+
+  // Get models button
+  const getModelsBtn = document.getElementById('get-models-btn');
+  if (getModelsBtn) {
+    getModelsBtn.addEventListener('click', async () => {
+      // Hide the second part of the form when refreshing models
+      const annotationSection = document.getElementById('llm-annotation-section');
+      if (annotationSection) {
+        annotationSection.style.display = 'none';
+      }
+
+      getModelsBtn.classList.add('is-loading');
+      try {
+        const response = await fetch(`/api/llm/models?endpoint=${encodeURIComponent(AppState.llmEndpoint)}`);
+        const data = await response.json();
+        if (data.error) throw new Error(data.error);
+        renderModelsList(data);
+      } catch (error) {
+        const listEl = document.getElementById('llm-models-list');
+        listEl.innerHTML = `<p class="has-text-danger">Error: ${escapeHtml(error.message)}</p>`;
+        // Hide the second part of the form on error as well
+        document.getElementById('llm-annotation-section').style.display = 'none';
+      } finally {
+        getModelsBtn.classList.remove('is-loading');
+      }
+    });
+  }
+
+  // Show the second part of the form when a model is selected
+  const modelsList = document.getElementById('llm-models-list');
+  if (modelsList) {
+    modelsList.addEventListener('change', (e) => {
+      if (e.target.type === 'radio' && e.target.checked) {
+        document.getElementById('llm-annotation-section').style.display = 'block';
+      }
+    });
+  }
+
+  // Start annotating images button
+  const startAnnotatingBtn = document.getElementById('start-annotating-btn');
+  if (startAnnotatingBtn) {
+    startAnnotatingBtn.addEventListener('click', async () => {
+      // Get selected model
+      const selectedRadio = document.querySelector('input[name="selected-llm-model"]:checked');
+      if (!selectedRadio) {
+        alert('Please select a model first.');
+        return;
+      }
+
+      const selectedModel = selectedRadio.value;
+
+      // Get annotation mode
+      const annotationModeRadio = document.querySelector('input[name="llm-annotation-mode"]:checked');
+      const annotationMode = annotationModeRadio ? annotationModeRadio.value : 'add';
+
+      startAnnotatingBtn.classList.add('is-loading');
+      startAnnotatingBtn.disabled = true;
+
+      try {
+        const response = await fetch('/api/llm/load', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: selectedModel,
+            endpoint: AppState.llmEndpoint,
+            echo_load_config: true
+          })
+        });
+
+        const data = await response.json();
+
+        if (data.error) {
+          alert('Error loading model: ' + data.error);
+          return;
+        }
+
+        if (data.status === 'loaded') {
+          // Store model info for the next step
+          AppState.selectedLlmModel = selectedModel;
+          AppState.llmAnnotationMode = annotationMode;
+          AppState.isAnnotating = true;
+
+          alert('Model loaded successfully. Starting annotation loop...');
+          // TODO: Start the annotation loop here
+        } else {
+          alert('Model loading failed: ' + JSON.stringify(data));
+        }
+      } catch (error) {
+        console.error('Error loading model:', error);
+        alert('Failed to load model: ' + error.message);
+      } finally {
+        startAnnotatingBtn.classList.remove('is-loading');
+        startAnnotatingBtn.disabled = false;
+      }
+    });
+  }
 });
 
 // Switch to annotation mode
@@ -492,6 +588,28 @@ function showLoading(show) {
   } else {
     DOM.loadingOverlay.style.display = 'none';
   }
+}
+
+// Render LLM models list
+function renderModelsList(models) {
+  const listEl = document.getElementById('llm-models-list');
+  if (!models.length) {
+    listEl.innerHTML = '<p class="has-text-grey">No models available.</p>';
+    return;
+  }
+  let html = '';
+  models.forEach((model) => {
+    const name = model.display_name || model.id;
+    const colorClass = model.loaded ? 'has-text-success' : '';
+    const loadedText = model.loaded ? ' (loaded)' : '';
+    html += `
+      <label class="radio ${colorClass}">
+        <input type="radio" name="selected-llm-model" value="${escapeHtml(name)}">
+        ${escapeHtml(name)}${loadedText}
+      </label><br>
+    `;
+  });
+  listEl.innerHTML = html;
 }
 
 // Escape HTML to prevent XSS
