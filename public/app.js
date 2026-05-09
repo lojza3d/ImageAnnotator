@@ -135,9 +135,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         if (data.status === 'loaded') {
-          // Store model info for the next step
+          // Store model info and prompt for the next step
+          const promptInput = document.getElementById('llm-prompt');
           AppState.selectedLlmModel = selectedModel;
           AppState.llmAnnotationMode = annotationMode;
+          AppState.llmPrompt = promptInput ? promptInput.value : '';
           AppState.isAnnotating = true;
 
           alert('Model loaded successfully. Starting annotation loop...');
