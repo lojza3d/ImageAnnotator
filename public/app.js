@@ -4,19 +4,43 @@ const AppState = {
   currentDirectory: '',
   keywordCounts: {}, // { keyword: count }
   selectedTile: null,
-  selectedTextarea: null
+  selectedTextarea: null,
+  llmEndpoint: 'http://localhost:1234'
 };
+
+// Tab state
+let currentTab = 'keywords';
+
+function switchTab(tabName) {
+  currentTab = tabName;
+
+  const keywordTabs = document.querySelectorAll('#annotation-mode .tabs li');
+  const keywordContent = document.getElementById('keyword-tab-content');
+  const llmContent = document.getElementById('llm-tab-content');
+
+  if (tabName === 'keywords') {
+    keywordTabs[0].classList.add('is-active');
+    keywordTabs[1].classList.remove('is-active');
+    keywordContent.style.display = 'block';
+    llmContent.style.display = 'none';
+  } else {
+    keywordTabs[0].classList.remove('is-active');
+    keywordTabs[1].classList.add('is-active');
+    keywordContent.style.display = 'none';
+    llmContent.style.display = 'block';
+  }
+}
 
 // DOM elements cache
 const DOM = {
   directoryPathInput: document.getElementById('directory-path'),
   scanBtn: document.getElementById('scan-btn'),
-  clearBtn: document.getElementById('clear-btn'),
   imageContainer: document.getElementById('image-container'),
   loadingOverlay: document.getElementById('loading-overlay'),
   initialModeDiv: document.getElementById('initial-mode'),
   annotationModeDiv: document.getElementById('annotation-mode'),
   keywordChipsContainer: document.getElementById('keyword-chips-container'),
+  llmEndpointInput: document.getElementById('llm-endpoint'),
   previewOverlay: document.getElementById('image-preview-overlay')
 };
 
@@ -26,14 +50,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Event listeners
   DOM.scanBtn.addEventListener('click', handleScanDirectory);
-  DOM.clearBtn.addEventListener('click', clearImages);
-});
+  DOM.llmEndpointInput.addEventListener('input', (e) => {
+    AppState.llmEndpoint = e.target.value;
+  });
 
-// Switch to initial mode
-function switchToInitialMode() {
-  DOM.initialModeDiv.style.display = 'block';
-  DOM.annotationModeDiv.style.display = 'none';
-}
+  // Tab switching
+  const tabHeaders = document.querySelectorAll('#annotation-mode .tabs li');
+  tabHeaders[0].addEventListener('click', () => switchTab('keywords'));
+  tabHeaders[1].addEventListener('click', () => switchTab('llm'));
+});
 
 // Switch to annotation mode
 function switchToAnnotationMode() {
@@ -68,19 +93,6 @@ function setSelection(tile) {
 
   // 4. Always trigger chip highlight update to ensure UI consistency
   highlightChipsForSelectedTextarea();
-}
-
-// Clear images
-function clearImages() {
-  setSelection(null);
-
-  AppState.currentDirectory = '';
-  DOM.directoryPathInput.value = '';
-  AppState.currentImages = [];
-
-  switchToInitialMode();
-  DOM.imageContainer.innerHTML = '';
-  DOM.clearBtn.disabled = true;
 }
 
 // Extract keywords from annotation text
@@ -316,7 +328,6 @@ async function loadImages() {
 
       if (AppState.currentImages.length > 0) {
         switchToAnnotationMode();
-        DOM.clearBtn.disabled = false;
         renderKeywordChips();
       }
 
@@ -448,7 +459,6 @@ async function handleScanDirectory() {
       AppState.currentImages = data.images;
 
       switchToAnnotationMode();
-      DOM.clearBtn.disabled = false;
       renderKeywordChips();
       renderImageTiles(AppState.currentImages);
     } else {
