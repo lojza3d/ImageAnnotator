@@ -11,6 +11,7 @@ const AppState = {
   llmInstanceId: null,
   selectedLlmModel: null,
   llmAnnotationMode: 'add',
+  llmAnnotationScope: 'all',
   llmPrompt: ''
 };
 
@@ -129,13 +130,15 @@ document.addEventListener('DOMContentLoaded', async () => {
       const annotationModeRadio = document.querySelector('input[name="llm-annotation-mode"]:checked');
       const annotationMode = annotationModeRadio ? annotationModeRadio.value : 'add';
 
-      startAnnotatingBtn.classList.add('is-loading');
-      startAnnotatingBtn.disabled = true;
+      // Get annotation scope
+      const annotationScopeRadio = document.querySelector('input[name="llm-annotation-scope"]:checked');
+      const annotationScope = annotationScopeRadio ? annotationScopeRadio.value : 'all';
 
       try {
         const promptInput = document.getElementById('llm-prompt');
         AppState.selectedLlmModel = selectedModel;
         AppState.llmAnnotationMode = annotationMode;
+        AppState.llmAnnotationScope = annotationScope;
         AppState.llmPrompt = promptInput ? promptInput.value : '';
         AppState.isAnnotating = true;
         AppState.isStopped = false;
@@ -244,7 +247,42 @@ document.addEventListener('DOMContentLoaded', async () => {
     const stopBtn = document.getElementById('stop-annotating-btn');
     const startBtn = document.getElementById('start-annotating-btn');
     const totalImages = AppState.currentImages.length;
+    const mode = AppState.llmAnnotationMode;
+    const scope = AppState.llmAnnotationScope;
 
+    // Determine loop start and end based on scope
+    let startIndex = 0;
+    let endIndex = totalImages;
+
+    if (scope === 'forward') {
+      if (!AppState.selectedTile) {
+        alert('Select a starting image.');
+        return;
+      }
+      const selName = decodeURIComponent(AppState.selectedTile.dataset.image);
+      startIndex = AppState.currentImages.findIndex(img => img.image?.name === selName);
+      if (startIndex === -1) startIndex = 0;
+    } else if (scope === 'selected') {
+      if (!AppState.selectedTile) {
+        alert('Select an image.');
+        return;
+      }
+      const selName = decodeURIComponent(AppState.selectedTile.dataset.image);
+      startIndex = AppState.currentImages.findIndex(img => img.image?.name === selName);
+      if (startIndex === -1) return;
+
+      // Check skip condition for single image
+      const selectedImg = AppState.currentImages[startIndex];
+      if (mode === 'skip' && selectedImg.annotation && selectedImg.annotation.trim()) {
+        alert('Selected image is already annotated.');
+        return;
+      }
+
+      endIndex = startIndex + 1;
+    }
+
+    startAnnotatingBtn.classList.add('is-loading');
+    startAnnotatingBtn.disabled = true;
     progressEl.style.display = 'block';
     progressLabel.style.display = 'block';
     stopBtn.style.display = 'inline-flex';
@@ -253,14 +291,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     startBtn.style.display = 'none';
     startBtn.disabled = true;
 
-    for (let i = 0; i < totalImages; i++) {
+    for (let i = startIndex; i < endIndex; i++) {
       if (AppState.isStopped) {
         break;
       }
 
       const item = AppState.currentImages[i];
+
+      // Skip mode check
+      if (mode === 'skip' && item.annotation && item.annotation.trim()) {
+        continue;
+      }
+
       const currentNum = i + 1;
-      progressEl.textContent = `Annotating ${currentNum} of ${totalImages}...`;
+      progressEl.textContent = `Annotating ${currentNum} of ${endIndex}...`;
 
       // Find the tile and save status
       const tile = document.querySelector(`.image-tile[data-image="${encodeURIComponent(item.image.name || item.image)}"]`);
@@ -673,7 +717,7 @@ function renderImageTiles(images) {
     const fileName = item.image?.name || item.image;
 
     html += `
-        <div class="tile is-child box image-tile" data-image="${encodeURIComponent(fileName)}" data-fullpath="${encodeURIComponent(item.fullPath || '')}">
+        <div class="is-child box image-tile" data-image="${encodeURIComponent(fileName)}" data-fullpath="${encodeURIComponent(item.fullPath || '')}">
           <article class="media">
             <div class="media-left">
               <figure class="image">

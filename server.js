@@ -201,62 +201,6 @@ app.get('/image/*', (req, res) => {
   }
 });
 
-// API endpoint to get existing images from uploads directory (legacy)
-app.get('/api/images', async (req, res) => {
-  try {
-    const uploadsDir = path.join(__dirname, 'uploads');
-
-    // Check if uploads directory exists
-    try {
-      fsSync.accessSync(uploadsDir);
-    } catch (err) {
-      return res.json({ images: [] });
-    }
-
-    const files = fsSync.readdirSync(uploadsDir);
-
-    // Filter for image files
-    const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
-    const imageFiles = files.filter(file => {
-      const ext = path.extname(file).toLowerCase();
-      return imageExtensions.includes(ext);
-    });
-
-    // For each image, check if corresponding txt file exists
-    const imagesWithAnnotations = await Promise.all(
-      imageFiles.map(async (imageFile) => {
-        const baseName = path.basename(imageFile, path.extname(imageFile));
-        const txtFile = `${baseName}.txt`;
-        const txtPath = path.join(uploadsDir, txtFile);
-
-        let annotation = '';
-        try {
-          fsSync.accessSync(txtPath);
-          annotation = fsSync.readFileSync(txtPath, 'utf8');
-        } catch (err) {
-          // File doesn't exist or can't be read
-        }
-
-        return {
-          image: {
-            name: imageFile,
-            fullPath: path.join(uploadsDir, imageFile)
-          },
-          fullPath: path.join(uploadsDir, imageFile),
-          annotation: annotation
-        };
-      })
-    );
-
-    res.json({ images: imagesWithAnnotations });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch images' });
-  }
-});
-
-// Serve uploads directory as static
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
 // API endpoint for LLM models
 app.get('/api/llm/models', async (req, res) => {
   try {

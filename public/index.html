@@ -5,10 +5,19 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Image Annotator</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css" />
+  <link href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css" rel="stylesheet">
   <style>
+    .image-tile:first-of-type {
+      margin-top: 8px;
+    }
+
     .image-tile {
-      margin: 8px 8px 0 8px;
+      margin: 0 8px 0 8px;
+    }
+
+    .image-tile:last-of-type {
+      margin-bottom: 8px;
     }
 
     .thumbnail {
@@ -68,6 +77,7 @@
       flex: 2;
       overflow-y: auto;
       max-height: calc(100vh - 250px);
+      background-color: #f9f9f9;
     }
 
     .right-column {
@@ -75,7 +85,6 @@
       overflow-y: auto;
       max-height: calc(100vh - 250px);
       padding: 10px;
-      background-color: #f9f9f9;
       border-radius: 8px;
     }
 
@@ -163,7 +172,7 @@
             </div>
             <div class="control">
               <button class="button is-primary" id="scan-btn">
-                <span class="icon"><i class="fas fa-search"></i></span>
+                <span class="icon"><i class="mdi mdi-image-search"></i></span>
                 <span>Scan Directory</span>
               </button>
             </div>
@@ -179,7 +188,7 @@
         </div>
 
         <!-- Right Column: Annotation mode (1/3 width) -->
-        <div id="annotation-mode" class="right-column" style="display: none;">
+        <div id="annotation-mode" class="tile-container right-column" style="display: none;">
           <!-- Tabs -->
           <div class="tabs is-boxed">
             <ul>
@@ -194,7 +203,7 @@
               <li>
                 <a>
                   <span class="icon is-small">
-                    <i class="mdi mdi-image-auto-adjust" aria-hidden="true"></i>
+                    <i class="mdi mdi-tooltip-image" aria-hidden="true"></i>
                   </span>
                   <span>LLM Annotation</span>
                 </a>
@@ -299,7 +308,7 @@
   <div id="loading-overlay" class="loading-overlay" style="display: none;">
     <div class="loading-spinner">
       <span class="icon is-large">
-        <i class="fas fa-2x fa-spinner fa-spin"></i>
+        <i class="mdi mdi-hourglass"></i>
       </span>
       <p class="mt-3">Loading...</p>
     </div>
