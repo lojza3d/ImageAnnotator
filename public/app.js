@@ -245,9 +245,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     const totalImages = AppState.currentImages.length;
 
     progressEl.style.display = 'block';
-    stopBtn.style.display = 'block';
+    stopBtn.style.display = 'inline-flex';
     stopBtn.disabled = false;
     stopBtn.textContent = 'Stop annotating';
+    startBtn.style.display = 'none';
     startBtn.disabled = true;
 
     for (let i = 0; i < totalImages; i++) {
@@ -366,6 +367,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     stopBtn.style.display = 'none';
     stopBtn.disabled = false;
     stopBtn.textContent = 'Stop annotating';
+    startBtn.style.display = 'inline-flex';
     startBtn.disabled = false;
     startBtn.classList.remove('is-loading');
   }
