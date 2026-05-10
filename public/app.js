@@ -240,11 +240,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Main annotation loop function
   async function startAnnotationLoop() {
     const progressEl = document.getElementById('llm-annotation-progress');
+    const progressLabel = document.getElementById('llm-annotation-progress-label');
     const stopBtn = document.getElementById('stop-annotating-btn');
     const startBtn = document.getElementById('start-annotating-btn');
     const totalImages = AppState.currentImages.length;
 
     progressEl.style.display = 'block';
+    progressLabel.style.display = 'block';
     stopBtn.style.display = 'inline-flex';
     stopBtn.disabled = false;
     stopBtn.textContent = 'Stop annotating';
@@ -364,6 +366,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Update GUI
     progressEl.style.display = 'none';
+    progressLabel.style.display = 'none';
     stopBtn.style.display = 'none';
     stopBtn.disabled = false;
     stopBtn.textContent = 'Stop annotating';

@@ -226,7 +226,7 @@
               </div>
             </div>
             <div id="llm-models-list" class="mt-4"></div>
-            
+
             <div id="llm-annotation-section" class="mt-4" style="display: none;">
               <h3 class="title is-5">Automatic annotations</h3>
               <div class="field">
@@ -242,9 +242,35 @@
                     Replace existing annotations with LLM text
                   </label>
                 </div>
+                <div class="control">
+                  <label class="radio">
+                    <input type="radio" name="llm-annotation-mode" value="skip">
+                    Only add empty annotations
+                  </label>
+                </div>
               </div>
               <div class="field">
-                <label class="label">Prompt</label>
+                <div class="control">
+                  <label class="radio">
+                    <input type="radio" name="llm-annotation-scope" value="all" checked>
+                    Start from first image
+                  </label>
+                </div>
+                <div class="control">
+                  <label class="radio">
+                    <input type="radio" name="llm-annotation-scope" value="forward">
+                    Start from selected image
+                  </label>
+                </div>
+                <div class="control">
+                  <label class="radio">
+                    <input type="radio" name="llm-annotation-scope" value="selected">
+                    Annotate only single (selected) image
+                  </label>
+                </div>
+              </div>
+              <div class="field">
+                <label class="label">Prompt <span style="font-weight: normal;">(optional)</span></label>
                 <div class="control">
                   <input class="input" type="text" id="llm-prompt" value="">
                 </div>
@@ -254,11 +280,12 @@
                   <button class="button is-primary" id="start-annotating-btn">Start annotating images</button>
                 </div>
                 <div class="control">
-                  <button class="button is-danger" id="stop-annotating-btn" style="display: none;">Stop annotating</button>
+                  <button class="button is-danger" id="stop-annotating-btn" style="display: none;">Stop
+                    annotating</button>
                 </div>
               </div>
               <div class="field">
-                <label class="label">Progress</label>
+                <label class="label" id="llm-annotation-progress-label" style="display: none;">Progress</label>
                 <p class="help" id="llm-annotation-progress" style="display: none;">Annotating 0 of 0...</p>
               </div>
             </div>
