@@ -256,9 +256,11 @@ app.post('/api/llm/load', async (req, res) => {
 // API endpoint to annotate an image
 app.post('/api/llm/annotate', async (req, res) => {
   try {
+    console.log(req.body);
     const { model, endpoint, imagePath, prompt } = req.body;
     const llmEndpoint = endpoint || 'http://localhost:1234';
     const chatUrl = `${llmEndpoint.trim()}/api/v1/chat`;
+    console.log('Custom prompt: ' + prompt);
 
     // Read the image file
     const resolvedPath = pathModule.resolve(imagePath);
@@ -281,9 +283,15 @@ app.post('/api/llm/annotate', async (req, res) => {
     else if (ext === '.webp') mimeType = 'image/webp';
 
     // Construct input
+
+    let inputPrompt = prompt;
+    if ((inputPrompt && inputPrompt.trim() === '') || !inputPrompt) {
+      inputPrompt = 'Describe the key elements of this image.'
+    }
+
     const promptInput = {
       type: 'text',
-      content: 'Describe the key elements of this image.'
+      content: inputPrompt
     };
 
     const imageInput = {
