@@ -256,11 +256,9 @@ app.post('/api/llm/load', async (req, res) => {
 // API endpoint to annotate an image
 app.post('/api/llm/annotate', async (req, res) => {
   try {
-    console.log(req.body);
     const { model, endpoint, imagePath, prompt } = req.body;
     const llmEndpoint = endpoint || 'http://localhost:1234';
     const chatUrl = `${llmEndpoint.trim()}/api/v1/chat`;
-    console.log('Custom prompt: ' + prompt);
 
     // Read the image file
     const resolvedPath = pathModule.resolve(imagePath);

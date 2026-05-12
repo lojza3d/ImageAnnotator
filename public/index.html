@@ -213,6 +213,32 @@
 
           <!-- Tab content containers -->
           <div id="keyword-tab-content">
+            <!-- Filtering Section -->
+            <div class="filtering-section mb-5">
+              <label class="label">Filter by keywords</label>
+
+              <!-- Tags Container -->
+              <div id="filtering-tags-container" class="field is-grouped is-grouped-multiline mb-3">
+                <!-- Tags rendered here -->
+              </div>
+
+              <!-- Dropdown and Button -->
+              <div class="field is-grouped">
+                <div class="control" style="width:50%;">
+                  <div class="select">
+                    <select id="filter-keyword-dropdown">
+                      <option value="">Select a keyword...</option>
+                      <!-- Options populated dynamically -->
+                    </select>
+                  </div>
+                </div>
+                <div class="control">
+                  <button class="button is-primary" id="apply-filter-btn">Apply filter</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Existing Chips -->
             <div id="keyword-chips-container">
               <label class="label">Keywords</label>
               <div id="keyword-chips" class="keyword-chips">

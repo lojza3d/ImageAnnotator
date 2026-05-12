@@ -7,6 +7,7 @@ A lightweight web application for managing and generating image annotations. Use
 * **Directory Scanning:** Instantly load images from any local directory (just copy the Pathname in Finder, if you're on Mac).
 * **Manual Annotation:** Edit text annotations for each image; they are saved as `[image name].txt` files in the same directory as the annotated image. This is a Draw Things friendly way of storing image annotations for LoRA training (use "Import from folder..." in Draw Things when adding images for training).
 * **Keyword Management:** Visual tags for quick keyword management (add / remove keyword or phrase from selected image just by clicking the tags).
+* **Filtering by Keywords:** Select one or more keywords / phrases to filter images that already contain them. Work with this filtered selection (modify annotations, run automatic annotations).
 * **Automated LLM Annotation:** 
   * Integrated with **LM Studio** for on-device image understanding.
   * **Modes:** Three modes for LLM annotation: add to existing, replace existing, or skip for already annotated images.
@@ -14,7 +15,15 @@ A lightweight web application for managing and generating image annotations. Use
 * **Automatic `.txt` file saves:** All the annotations are instantly saved upon edits.
 ![screenshot_llm.png](screenshot_llm.png)
 
+**Screenshot 1:** Local LLM powered automatic annotation (LM Studio required.)
+
 ![screenshot_manual.png](screenshot_manual.png)
+
+**Screenshot 2:** Manual annotation using reusable keywords / phrases (older version without filtering).
+![screenshot_filter.png](screenshot_filter.png)
+
+**Screenshot 3:** New filtering option: choose one or more keywords to filter just a subset of annotated images.
+
 
 ## 🛠️ Installation
 
@@ -70,14 +79,14 @@ Mandatory LLM Studio server configuration includes "Just-in-Time Model Loading" 
 ![lmstudio_server_config.png](lmstudio_server_config.png)
 
 
-## File Structure
+## 📂 File Structure
 
 * `annotate_system_prompt.md` - Custom system prompt for the LLM loaded in LM Studio. It is sent with each annotation request. Usually sufficient, but you may edit this as per your needs. If this file is not found, a default system prompt is sent to the LLM: _"You are an image annotation assistant. Provide a comma-separated list of keywords describing the image."_
 - `server.js` - Node.js backend server providing the endpoins for web GUI and taking care of filesystem integration and LM Studio integration
 - `public/index.html` - Main HTML file - the web app structure.
 - `public/app.js` - Main Javascript file - the web app behavior.
 
-## How It Works
+## ⚙️ How It Works
 
 ### Directory Scanning
 1. Enter a directory path (e.g., `/Users/yourname/Pictures/images`)
@@ -91,7 +100,7 @@ Mandatory LLM Studio server configuration includes "Just-in-Time Model Loading" 
 - Node.js reads the image file from disk and streams it to the browser
 - Correct Content-Type headers are set for each image format
 
-## 📂 API Endpoints
+## ➡️ API Endpoints
 This is just a documentation for internal endpoints of the `server.js`. The endpoints are used by the web app to process the images, annotations and LM Studio communication.
 | Method  | Endpoint  |  Description |
 |---|---|---|
@@ -102,7 +111,7 @@ This is just a documentation for internal endpoints of the `server.js`. The endp
 |  POST |  `/api/llm/annotate` |  Trigger annotation via selected LM Studio vision model. |
 |  POST |  `/api/llm/unload` |  Unloads the used model instance after annotation loop. |
 
-## Notes & Troubleshooting
+## 📓 Notes & Troubleshooting
 
 * **Test the app properly** in a folder where you can loose your data (text annotations). Always backup your annotations before you let Image Annotator to modify them.
 * The app was coded partly with LLM model `qwen3.6-35b-a3b`, partly manually, and tested on macOS only.

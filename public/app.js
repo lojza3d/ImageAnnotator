@@ -12,7 +12,10 @@ const AppState = {
   selectedLlmModel: null,
   llmAnnotationMode: 'add',
   llmAnnotationScope: 'all',
-  llmPrompt: ''
+  llmPrompt: '',
+  filteringKeywords: [],
+  filteredImages: [],
+  filterActive: false
 };
 
 // Tab state
@@ -246,7 +249,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const progressLabel = document.getElementById('llm-annotation-progress-label');
     const stopBtn = document.getElementById('stop-annotating-btn');
     const startBtn = document.getElementById('start-annotating-btn');
-    const totalImages = AppState.currentImages.length;
+    const imagesToProcess = AppState.filterActive ? AppState.filteredImages : AppState.currentImages;
+    const totalImages = imagesToProcess.length;
     const mode = AppState.llmAnnotationMode;
     const scope = AppState.llmAnnotationScope;
 
@@ -260,7 +264,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
       }
       const selName = decodeURIComponent(AppState.selectedTile.dataset.image);
-      startIndex = AppState.currentImages.findIndex(img => img.image?.name === selName);
+      startIndex = imagesToProcess.findIndex(img => img.image?.name === selName);
       if (startIndex === -1) startIndex = 0;
     } else if (scope === 'selected') {
       if (!AppState.selectedTile) {
@@ -268,11 +272,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
       }
       const selName = decodeURIComponent(AppState.selectedTile.dataset.image);
-      startIndex = AppState.currentImages.findIndex(img => img.image?.name === selName);
+      startIndex = imagesToProcess.findIndex(img => img.image?.name === selName);
       if (startIndex === -1) return;
 
       // Check skip condition for single image
-      const selectedImg = AppState.currentImages[startIndex];
+      const selectedImg = imagesToProcess[startIndex];
       if (mode === 'skip' && selectedImg.annotation && selectedImg.annotation.trim()) {
         alert('Selected image is already annotated.');
         return;
@@ -296,7 +300,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         break;
       }
 
-      const item = AppState.currentImages[i];
+      const item = imagesToProcess[i];
 
       // Skip mode check
       if (mode === 'skip' && item.annotation && item.annotation.trim()) {
@@ -463,11 +467,14 @@ function extractKeywords(annotation) {
   return keywords;
 }
 
-// Update keyword counts based on all annotations
-function updateKeywordCounts() {
+// Update keyword counts based on provided image list
+function updateKeywordCounts(images) {
+  // Clear existing counts to ensure stale keywords are removed
+  AppState.keywordCounts = {};
+
   const newKeywordCounts = {};
 
-  AppState.currentImages.forEach((item) => {
+  images.forEach((item) => {
     const annotation = item.annotation || '';
     extractKeywords(annotation).forEach(keyword => {
       newKeywordCounts[keyword] = (newKeywordCounts[keyword] || 0) + 1;
@@ -484,32 +491,162 @@ function updateKeywordCounts() {
 // Render keyword chips
 function renderKeywordChips() {
   const container = DOM.keywordChipsContainer;
-  const sortedKeywords = updateKeywordCounts();
+  const imagesToProcess = AppState.filterActive ? AppState.filteredImages : AppState.currentImages;
+  const sortedKeywords = updateKeywordCounts(imagesToProcess);
 
   if (sortedKeywords.length === 0) {
     container.innerHTML = '<p class="has-text-grey">No keywords found in annotations</p>';
-    return;
+  } else {
+    let html = '';
+    sortedKeywords.forEach(keyword => {
+      const count = AppState.keywordCounts[keyword];
+      html += `
+        <div class="keyword-chip" data-keyword="${escapeHtml(keyword)}">
+          ${escapeHtml(keyword)}
+          <span class="keyword-chip-count">${count}</span>
+        </div>`;
+    });
+    container.innerHTML = html;
+
+    // Add click handlers to chips
+    document.querySelectorAll('.keyword-chip').forEach(chip => {
+      chip.addEventListener('click', handleChipClick);
+    });
   }
 
-  let html = '';
-  sortedKeywords.forEach(keyword => {
-    const count = AppState.keywordCounts[keyword];
-    html += `
-      <div class="keyword-chip" data-keyword="${escapeHtml(keyword)}">
-        ${escapeHtml(keyword)}
-        <span class="keyword-chip-count">${count}</span>
-      </div>`;
-  });
+  // Update filtering dropdown
+  updateFilteringDropdown(sortedKeywords);
 
-  container.innerHTML = html;
-
-  // Add click handlers to chips
-  document.querySelectorAll('.keyword-chip').forEach(chip => {
-    chip.addEventListener('click', handleChipClick);
-  });
+  // Render filtering tags
+  renderFilteringTags();
 
   // Ensure newly rendered chips are immediately synchronized with the current selection
   highlightChipsForSelectedTextarea();
+}
+
+// Event listener for filtering dropdown
+const filterDropdown = document.getElementById('filter-keyword-dropdown');
+if (filterDropdown) {
+  filterDropdown.addEventListener('change', handleFilteringDropdownChange);
+}
+
+// Apply/Remove filter button logic
+const applyFilterBtn = document.getElementById('apply-filter-btn');
+if (applyFilterBtn) {
+  applyFilterBtn.addEventListener('click', () => {
+    if (AppState.filterActive) {
+      // Remove filter
+      AppState.filterActive = false;
+      AppState.filteredImages = [];
+      applyFilterBtn.innerText = 'Apply filter';
+      renderImageTiles(AppState.currentImages);
+      renderKeywordChips();
+    } else {
+      // Apply filter
+      if (AppState.filteringKeywords.length === 0) {
+        alert('Select at least one keyword.');
+        return;
+      }
+
+      AppState.filterActive = true;
+      applyFilterBtn.innerText = 'Remove filter';
+      AppState.filteredImages = [];
+
+      AppState.currentImages.forEach(image => {
+        const imageKeywords = extractKeywords(image.annotation);
+        const hasMatch = AppState.filteringKeywords.some(keyword => imageKeywords.includes(keyword));
+        if (hasMatch) {
+          AppState.filteredImages.push(image);
+        }
+      });
+
+      renderImageTiles(AppState.filteredImages);
+      renderKeywordChips();
+      AppState.selectedTile = null;
+    }
+  });
+}
+
+// Update filtering dropdown with all available keywords
+function updateFilteringDropdown(keywords) {
+  const dropdown = document.getElementById('filter-keyword-dropdown');
+  if (!dropdown) return;
+
+  // Keep the first option (placeholder)
+  const placeholder = dropdown.options[0];
+  dropdown.innerHTML = '';
+  dropdown.appendChild(placeholder);
+
+  // Add all keywords from the current counts
+  const allKeywords = Object.keys(AppState.keywordCounts).sort();
+  allKeywords.forEach(keyword => {
+    const option = document.createElement('option');
+    option.value = keyword;
+    option.textContent = keyword;
+    dropdown.appendChild(option);
+  });
+}
+
+// Render filtering tags
+function renderFilteringTags() {
+  const container = document.getElementById('filtering-tags-container');
+  if (!container) return;
+
+  container.innerHTML = '';
+
+  if (AppState.filteringKeywords.length === 0) {
+    container.innerHTML = '<p class="has-text-grey">No filtering keywords selected</p>';
+    return;
+  }
+
+  AppState.filteringKeywords.forEach(keyword => {
+    const controlDiv = document.createElement('div');
+    controlDiv.className = 'control';
+
+    const tagsDiv = document.createElement('div');
+    tagsDiv.className = 'tags has-addons';
+
+    const tag = document.createElement('a');
+    tag.className = 'tag is-link';
+    tag.textContent = keyword;
+
+    const deleteBtn = document.createElement('a');
+    deleteBtn.className = 'tag is-delete';
+    deleteBtn.addEventListener('click', () => {
+      removeFilteringKeyword(keyword);
+    });
+
+    tagsDiv.appendChild(tag);
+    tagsDiv.appendChild(deleteBtn);
+    controlDiv.appendChild(tagsDiv);
+    container.appendChild(controlDiv);
+  });
+}
+
+// Add keyword to filtering list
+function addFilteringKeyword(keyword) {
+  if (!AppState.filteringKeywords.includes(keyword)) {
+    AppState.filteringKeywords.push(keyword);
+    renderFilteringTags();
+  }
+}
+
+// Remove keyword from filtering list
+function removeFilteringKeyword(keyword) {
+  const index = AppState.filteringKeywords.indexOf(keyword);
+  if (index > -1) {
+    AppState.filteringKeywords.splice(index, 1);
+    renderFilteringTags();
+  }
+}
+
+// Handle dropdown change
+function handleFilteringDropdownChange(e) {
+  const keyword = e.target.value;
+  if (keyword) {
+    addFilteringKeyword(keyword);
+    e.target.value = ''; // Reset dropdown
+  }
 }
 
 // Highlight chips based on selected textarea
