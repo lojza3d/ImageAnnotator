@@ -74,7 +74,13 @@ A lightweight web application for managing and generating image annotations. Use
 6. Optionally enter a prompt for the LLM (see how to edit the system prompt below); if no prompt is filled, default prompt _"Describe the key elements of this image."_ is sent to the LLM.
 7. Click **Start annotating images**.
 
-Mandatory LLM Studio server configuration includes "Just-in-Time Model Loading" (see screenshot). Image Annotator doesn't load the model. It only unloads the used instance after the annotation loop is finished.
+💡 TIP: Some training tools (e.g., Draw Things) have an option to automatically annotate images using various models like Blip2 or Moondream2. With ImageAnnotator, however, you can not only use the newest vision models (like Gemma 4 or Qwen 3.6), but also influence how the annotations look using the optional "Prompt" field. Imagine you want to add specific keywords describing certain scenes or elements. In such a case, you can submit a prompt like this:
+
+>_Examine the image and return a comma-separated list of keywords. Do not write anything else. Focus on the person's pose. If you detect crossed legs, add "crossed legs". If you detect raised hands, add "raised hands". If you detect both hands on knees, add "hands on knees". If you detect just one hand on a knee, add "one hand on knee". If you detect bent knees, add "bent knees". If you detect straight legs, add "straight legs". If you detect one leg bent at the knee and one straight, add "one leg straight, one leg bent at the knee". Do not add any other keywords in your response._
+
+Of course, this is just an example that might not make sense in your workflow (or in any workflow, to be honest 😇), but it should give you a hint about the possibilities and annotation versatility.
+
+☝️ Mandatory LLM Studio server configuration includes "Just-in-Time Model Loading" (see screenshot). Image Annotator doesn't load the model. It only unloads the used instance after the annotation loop is finished.
 
 ![lmstudio_server_config.png](lmstudio_server_config.png)
 
